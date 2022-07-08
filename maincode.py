@@ -16,8 +16,8 @@ from aiogram import types
 import json
 
 
-import pywhatkit
-import keyboard
+# import pywhatkit
+# import keyboard
 
 import validators
 
@@ -247,16 +247,16 @@ def getUserText(message: types.Message):
         except:
              bot.send_message(message.chat.id,'the remind is not found or error in request')
 
-    elif('play music' in message.text.lower()):#пасхалка?
-        try:
-            search_video=message.text[message.text.lower().find('play music')+len('play music'):]
+#     elif('play music' in message.text.lower()):#пасхалка?
+#         try:
+#             search_video=message.text[message.text.lower().find('play music')+len('play music'):]
             
-            pywhatkit.playonyt(search_video)
-        except: bot.send_message(message.chat.id,'nothing to be found')
-    elif('close music' == message.text.lower()):
-        try:
-            keyboard.press_and_release('ctrl+w')
-        except: bot.send_message(message.chat.id,'nothing to be closed')
+#             pywhatkit.playonyt(search_video)
+#         except: bot.send_message(message.chat.id,'nothing to be found')
+#     elif('close music' == message.text.lower()):
+#         try:
+#             keyboard.press_and_release('ctrl+w')
+#         except: bot.send_message(message.chat.id,'nothing to be closed')
     
     #setter of notification
     elif(isDateFormat(text_split) and datetime.strptime(text_split,'%d.%m.%Y').date()>=datetime.today().date()):
