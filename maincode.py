@@ -77,8 +77,12 @@ def getNotificationsList(id):
     except: bot.send_message(id,'No notifications found')
 
 def morning_mess():
-    bot.send_message(687088043,'Доброе утро)'+'\n'+getWeatherForecastToday('Almaty'))
-    bot.send_message(1372373162,'Доброе утро)'+'\n'+getWeatherForecastToday('Almaty'))
+    for fname in os.listdir('.'):
+        if os.path.isfile(fname) and 'remainds_'in fname :
+            id=fname[fname.find('_')+1:fname.find('.')]
+            bot.send_message(id,'Доброе утро)')
+            bot.send_message(id,getWeatherForecastToday('Almaty'))
+    
 
 
 @bot.message_handler(commands=['buttons','control'])
@@ -103,11 +107,16 @@ def notification_scedules():
 
                     notifs=pydantic.parse_obj_as(List[remainder_date],json.loads(strjson))
                     tmp=len(notifs)
+                    indexes_toDel=[]
                     for notif in notifs:
                         if(notif.activation_date.date() <= datetime.today().date()):
                             id=fname[fname.find('_')+1:fname.find('.')]
                             bot.send_message(id,'Не забудь: '+notif.remind_text)
-                            notifs.remove(notif)
+                            indexes_toDel.append(notifs.index(notif))
+
+                    indexes_toDel.sort(reverse=True) #this way i pop without ruining next index pop
+                    for index in indexes_toDel:                            
+                        notifs.pop(index)                            
                     if len(notifs)!=tmp:
                         file=open(fname,'w+')#not optimized
             
@@ -138,7 +147,7 @@ def schedules():
             
                         schedule.every().day.at(rem.activation_time).do(bot.send_message,rem.id_chat,rem.remiand_text).tag('daily-tasks')
     schedule.every().day.at('07:00').do(morning_mess).tag('daily-tasks')
-    schedule.every().day.at('15:58').do(notification_scedules).tag('daily-tasks')
+    schedule.every().day.at('07:00').do(notification_scedules).tag('daily-tasks')
                
 
 @bot.message_handler(commands=['all_reminds','вся_рутина','allrem'])
@@ -247,16 +256,16 @@ def getUserText(message: types.Message):
         except:
              bot.send_message(message.chat.id,'the remind is not found or error in request')
 
-#     elif('play music' in message.text.lower()):#пасхалка?
-#         try:
-#             search_video=message.text[message.text.lower().find('play music')+len('play music'):]
+    # elif('play music' in message.text.lower()):#пасхалка?
+    #     try:
+    #         search_video=message.text[message.text.lower().find('play music')+len('play music'):]
             
-#             pywhatkit.playonyt(search_video)
-#         except: bot.send_message(message.chat.id,'nothing to be found')
-#     elif('close music' == message.text.lower()):
-#         try:
-#             keyboard.press_and_release('ctrl+w')
-#         except: bot.send_message(message.chat.id,'nothing to be closed')
+    #         pywhatkit.playonyt(search_video)
+    #     except: bot.send_message(message.chat.id,'nothing to be found')
+    # elif('close music' == message.text.lower()):
+    #     try:
+    #         keyboard.press_and_release('ctrl+w')
+    #     except: bot.send_message(message.chat.id,'nothing to be closed')
     
     #setter of notification
     elif(isDateFormat(text_split) and datetime.strptime(text_split,'%d.%m.%Y').date()>=datetime.today().date()):
@@ -330,6 +339,7 @@ def getUserText(message: types.Message):
         bot.send_message(message.chat.id,'Топ видео, я сохраню))')
     elif(message.text.lower() in forecast_related_words):
         bot.send_message(message.chat.id,getWeatherForecastToday('Almaty'))
+   
         
     
     else: bot.reply_to(message,message.text)
