@@ -145,7 +145,8 @@ def schedules():
         
                     for rem in reminds:
             
-                        schedule.every().day.at(rem.activation_time).do(bot.send_message,rem.id_chat,rem.remiand_text).tag('daily-tasks')
+                        schedule.every().day.at(rem.activation_time).do(bot.send_message,rem.id_chat,rem.remiand_text).tag('daily-tasks').tag(fname[len('remainds_'):fname.find('.')])
+                            
     schedule.every().day.at('07:00').do(morning_mess).tag('daily-tasks')
     schedule.every().day.at('07:00').do(notification_scedules).tag('daily-tasks')
                
@@ -169,10 +170,10 @@ def starter(message:types.Message):
     text='Привет, '+message.chat.first_name+'.\n'\
         +'Я телеграмм бот by AA. \nВот что я могу:\n'\
         +'1)Чтобы добавить ежедневное напоминание напишите в формате >23:00 text_to_do<\n'\
-        +'2)Чтобы получить весь список напоминаний или удалить используйте команду - allrem\n'\
+        +'2)Чтобы получить весь список напоминаний или удалить используйте команду - /allrem\n'\
         +'3)Чтобы добавить разовое напоминание через какое-то время можно использовать >in n days text_to_do< или назначить дату>05.07.2022 text_to_do<\n'\
-        +'4)Чтобы получить весь список разовых напоминаний или удалить используйте команду - allnotif\n'\
-        +'5)Могу хранить фотографию вашего расписания и отправлять погоду команда - control\n'
+        +'4)Чтобы получить весь список разовых напоминаний или удалить используйте команду - /allnotif\n'\
+        +'5)Могу хранить фотографию вашего расписания и отправлять погоду команда - /control\n'
 
         
     bot.send_message(message.chat.id,text)
@@ -207,7 +208,11 @@ def getUserText(message: types.Message):
         try:
             schedulePic=open('schedule_'+str(message.chat.id)+'.jpg','rb')
             bot.send_photo(message.chat.id,schedulePic) #obtain schedule from the server
-        except: bot.send_message(message.chat.id,'Before you should set the schedule')
+        except: 
+            bot.send_message(message.chat.id,'Before you should set the schedule-photo')
+            dialogChain=open('dialogChain_'+str(message.chat.id)+'.txt','w+') #yeah костыль # на продакшине понял что все сразу кидают фото вместо команды даже я
+            dialogChain.write('set schedule')
+            dialogChain.close()
     
     elif(isTimeFormat(text_split)): #setter of remainder in format time + text
         remaind_text=message.text.replace(text_split,'',1)
@@ -249,6 +254,7 @@ def getUserText(message: types.Message):
                     file.write(',')
                 else: i+=1
                 file.write  (remainder_everyday(id_chat=remind.id_chat,remiand_text= remind.remiand_text,activation_time= remind.activation_time).json())
+            
             bot.send_message(message.chat.id,'done')
             file.close()
             
