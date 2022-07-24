@@ -36,6 +36,10 @@ class remainder_everyday(pydantic.BaseModel):
 class remainder_date(pydantic.BaseModel):
     remind_text: str
     activation_date: datetime
+class Instruction(pydantic.BaseModel):
+    key: str
+    message_id: int 
+#idea: call key and bot replies the message (text/photo/video/voice) it is needed for saving instructions inititally
 
 def getWeatherForecastToday(city: str):  
     #https://api.openweathermap.org/data/2.5/onecall?lat=43.25&lon=76.95&units=metric&lang=ru&exclude=current,hourly,minutely&appid=6648940add8b78a3efaac738232a7aaf
@@ -76,6 +80,24 @@ def getNotificationsList(id):
         return pydantic.parse_obj_as(List[remainder_date],json.loads(strjson))
     except: bot.send_message(id,'No notifications found')
 
+def getInstructionList(id):
+    
+        file=open('instructions_'+str(id)+'.json','r')
+        strjson='['+file.read()+']'
+        file.close()
+        return pydantic.parse_obj_as(List[Instruction],json.loads(strjson))
+def is_in_listInstr(chat_id:int,tag:str):
+    try:
+        file=open('instructions_'+str(chat_id)+'.json','r')
+        strjson=file.read()
+        file.close()
+        return tag in strjson
+    except: return False
+def return_id_from_tag(chat_id:int,tag:str):
+    inst_list=getInstructionList(chat_id)
+
+    return next((it for it in inst_list if it.key==tag), None).message_id       
+     
 def morning_mess():
     for fname in os.listdir('.'):
         if os.path.isfile(fname) and 'remainds_'in fname :
@@ -150,7 +172,19 @@ def schedules():
     schedule.every().day.at('07:00').do(morning_mess).tag('daily-tasks')
     schedule.every().day.at('07:00').do(notification_scedules).tag('daily-tasks')
                
-
+@bot.message_handler(commands=['allinst'])
+def send_all_inst(message: types.Message):
+    try:
+        list=getInstructionList(message.chat.id)
+        all_inst='-----All Instructions-----\n'
+        i=1
+        for obj in list:
+            all_inst+=str(i)+') '+obj.key+'\n'
+        all_inst+='\nIf you wish to delete some, write in a format >delete inst 1<'
+        bot.send_message(message.chat.id,all_inst)
+    except:
+        bot.send_message(message.chat.id,'no instructions seems to be')
+     
 @bot.message_handler(commands=['all_reminds','вся_рутина','allrem'])
 def get_all_reminds(message:types.Message):
     try:
@@ -346,9 +380,56 @@ def getUserText(message: types.Message):
     elif(message.text.lower() in forecast_related_words):
         bot.send_message(message.chat.id,getWeatherForecastToday('Almaty'))
    
+   #setter instruction
+    elif(message.text[0]=='"' and message.text[-1]=='"'):
+        if(not is_in_listInstr(message.chat.id,message.text[1:-1])):
+            bot.send_message(message.chat.id,'Инструкция под тэгом: '+message.text[1:-1])
+            bot.send_message(message.chat.id,"Осталось только ее написать/прислать/сказать")
+            bot.register_next_step_handler(message,set_instruction,message.text[1:-1])
+        else: bot.send_message(message.chat.id,'С данным тэгом уже сущесвтует привязка')
+    #getter instruction
+    elif(is_in_listInstr(message.chat.id, message.text)):
+        bot.send_message(message.chat.id,reply_to_message_id=return_id_from_tag(message.chat.id,message.text),text='Here we go')
+    #delete instruction
+    elif('delete inst' in message.text.lower() and message.text.lower().split().__len__()==3):
+        try:
+            instNum=int(message.text.lower().split()[2])-1
+            insts=getInstructionList(message.chat.id)
+            insts.pop(instNum)
+            file=open('instructions_'+str(message.chat.id)+'.json','w+')#not optimized
+                
+                
+            i=0
+            for inst in insts:# add order by time would be cool
+                if(i>0):
+                    file.write(',')
+                else: i+=1
+                file.write(inst.json())
+                
+            bot.send_message(message.chat.id,'done')
+            file.close()
+        except:
+            bot.send_message(message.chat.id,'the instructions is not found or error in request')
+
         
     
     else: bot.reply_to(message,message.text)
+     
+def set_instruction(message: types.Message,tag):
+    
+    # bot.send_message(message.chat.id,"соси камса",reply_to_message_id=message.message_id-2)
+    # bot.send_message(message.chat.id,tag)
+
+    filename='instructions_'+str(message.chat.id)+'.json'
+    try: file=open(filename,'a+')
+    except: file=open(filename,'w+')
+    if(os.stat(filename).st_size!=0):
+                
+                file.write(',')
+    file.write(Instruction(key=tag,message_id=message.message_id).json())
+    bot.send_message(message.chat.id,'Сохранено')
+
+    file.close()
 
 @bot.message_handler(content_types='photo')   
 def usingPhoto(message:types.Message):
