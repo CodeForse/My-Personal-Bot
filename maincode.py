@@ -180,6 +180,7 @@ def send_all_inst(message: types.Message):
         i=1
         for obj in list:
             all_inst+=str(i)+') '+obj.key+'\n'
+            i+=1
         all_inst+='\nIf you wish to delete some, write in a format >delete inst 1<'
         bot.send_message(message.chat.id,all_inst)
     except:
