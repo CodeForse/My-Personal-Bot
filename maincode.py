@@ -293,7 +293,7 @@ def getUserText(message: types.Message):
             bot.send_message(message.chat.id,'Окей, я напомню')
             schedules()
         except: bot.send_message(message.chat.id,'Notification itself is not defined, Try again')
-    elif(text_split=='in' and (real_split[2].lower()=='days' or real_split[2].lower()=='day') and real_split[1].isdigit()):
+    elif(text_split.lower()=='in' and (real_split[2].lower()=='days' or real_split[2].lower()=='day') and real_split[1].isdigit()):
         diff=int(real_split[1])
         
         date=datetime.today()+timedelta(diff)
