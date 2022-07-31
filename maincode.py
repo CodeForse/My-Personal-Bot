@@ -89,9 +89,12 @@ def getInstructionList(id):
 def is_in_listInstr(chat_id:int,tag:str):
     try:
         file=open('instructions_'+str(chat_id)+'.json','r')
-        strjson=file.read()
+        insts=pydantic.parse_obj_as(List[Instruction] ,json.loads('['+file.read()+']'))
         file.close()
-        return tag in strjson
+        for each in insts:
+            if(each.key==tag): return True
+        return False
+        
     except: return False
 def return_id_from_tag(chat_id:int,tag:str):
     inst_list=getInstructionList(chat_id)
