@@ -21,10 +21,13 @@ import json
 
 import validators
 
- 
-TOKEN = "5539956122:AAGVPjHYFI5-mN0OXuVmkNpO3wzruU-8uuU"
-api_key='6648940add8b78a3efaac738232a7aaf' 
-bot=telebot.TeleBot(TOKEN)
+class Settings(pydantic.BaseSettings):
+    telebot_token: str
+    weather_api_key: str
+
+settings= Settings(_env_file='settings.env',_env_file_encoding='utf-8')
+
+bot=telebot.TeleBot(settings.telebot_token)
 
 scheduleRelatedWords=np.array(['schedule','sc','расписание','расп', 'рп'])
 forecast_related_words=np.array(['weather','погода','weather forecast','прогноз погоды'])
@@ -44,7 +47,7 @@ class Instruction(pydantic.BaseModel):
 def getWeatherForecastToday(city: str):  
     #https://api.openweathermap.org/data/2.5/onecall?lat=43.25&lon=76.95&units=metric&lang=ru&exclude=current,hourly,minutely&appid=6648940add8b78a3efaac738232a7aaf
     #to get daily not current
-    urlApi=f'https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&lang=ru&appid={api_key}'
+    urlApi=f'https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&lang=ru&appid={settings.weather_api_key}'
     request=requests.get(urlApi)
     data=request.json()
     descript=data['weather'][0]['description']
@@ -211,8 +214,8 @@ def starter(message:types.Message):
         +'2)Чтобы получить весь список напоминаний или удалить используйте команду - /allrem\n'\
         +'3)Чтобы добавить разовое напоминание через какое-то время можно использовать >in n days text_to_do< или назначить дату>05.07.2022 text_to_do<\n'\
         +'4)Чтобы получить весь список разовых напоминаний или удалить используйте команду - /allnotif\n'\
-        +'5)Могу хранить фотографию вашего расписания и отправлять погоду команда - /control\n'
-
+        +'5)Могу хранить фотографию вашего расписания и отправлять погоду команда - /control\n'\
+        +'6)Храню инструкции сообщений/видео/голоса под тэгом задаваемый как >"tag name"<, для просмотра всех команда /allinst\n'
         
     bot.send_message(message.chat.id,text)
 
