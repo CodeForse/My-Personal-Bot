@@ -1,7 +1,6 @@
 import telebot
 import requests
 import numpy as np
-from telebot import types
 from datetime import time,date, datetime,timedelta
 import schedule
 
@@ -16,15 +15,18 @@ from aiogram import types
 import json
 
 
-import pywhatkit
-import keyboard
+# import pywhatkit
+# import keyboard
 
 import validators
 
- 
-TOKEN = "5539956122:AAGVPjHYFI5-mN0OXuVmkNpO3wzruU-8uuU"
-api_key='6648940add8b78a3efaac738232a7aaf' 
-bot=telebot.TeleBot(TOKEN)
+class Settings(pydantic.BaseSettings):
+    telebot_token: str
+    weather_api_key: str
+
+settings= Settings(_env_file='settings.env',_env_file_encoding='utf-8')
+
+bot=telebot.TeleBot(settings.telebot_token)
 
 scheduleRelatedWords=np.array(['schedule','sc','расписание','расп', 'рп'])
 forecast_related_words=np.array(['weather','погода','weather forecast','прогноз погоды'])
@@ -36,11 +38,15 @@ class remainder_everyday(pydantic.BaseModel):
 class remainder_date(pydantic.BaseModel):
     remind_text: str
     activation_date: datetime
+class Instruction(pydantic.BaseModel):
+    key: str
+    message_id: int 
+#idea: call key and bot replies the message (text/photo/video/voice) it is needed for saving instructions inititally
 
 def getWeatherForecastToday(city: str):  
     #https://api.openweathermap.org/data/2.5/onecall?lat=43.25&lon=76.95&units=metric&lang=ru&exclude=current,hourly,minutely&appid=6648940add8b78a3efaac738232a7aaf
     #to get daily not current
-    urlApi=f'https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&lang=ru&appid={api_key}'
+    urlApi=f'https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&lang=ru&appid={settings.weather_api_key}'
     request=requests.get(urlApi)
     data=request.json()
     descript=data['weather'][0]['description']
@@ -63,22 +69,48 @@ def isDateFormat(input):
 
 def getRemindsList(id):
     try:
-        file=open('remainds_'+str(id)+'.json','r')
-        strjson='['+file.read()+']'
-        file.close()
+        with open('remainds_'+str(id)+'.json','r') as file:
+            strjson='['+file.read()+']'
+        
         return pydantic.parse_obj_as(List[remainder_everyday],json.loads(strjson))
     except: bot.send_message(id,'No remainds found')
 def getNotificationsList(id):
     try:
-        file=open('notification_'+str(id)+'.json','r')
-        strjson='['+file.read()+']'
+        with open('notification_'+str(id)+'.json','r') as file: 
+            strjson='['+file.read()+']'
+       
         file.close()
         return pydantic.parse_obj_as(List[remainder_date],json.loads(strjson))
     except: bot.send_message(id,'No notifications found')
 
+def getInstructionList(id):
+        with open('instructions_'+str(id)+'.json','r') as file:
+            strjson='['+file.read()+']'
+        
+        return pydantic.parse_obj_as(List[Instruction],json.loads(strjson))
+def is_in_listInstr(chat_id:int,tag:str):
+    try:
+        with open('instructions_'+str(chat_id)+'.json','r') as file:
+            insts=pydantic.parse_obj_as(List[Instruction] ,json.loads('['+file.read()+']'))
+        
+        if(len(insts)==0): return False
+        for each in insts:
+            if(each.key==tag): return True
+        return False
+        
+    except: return False
+def return_id_from_tag(chat_id:int,tag:str):
+    inst_list=getInstructionList(chat_id)
+
+    return next((it for it in inst_list if it.key==tag), None).message_id       
+     
 def morning_mess():
-    bot.send_message(687088043,'Доброе утро)'+'\n'+getWeatherForecastToday('Almaty'))
-    bot.send_message(1372373162,'Доброе утро)'+'\n'+getWeatherForecastToday('Almaty'))
+    for fname in os.listdir('.'):
+        if os.path.isfile(fname) and 'remainds_'in fname :
+            id=fname[fname.find('_')+1:fname.find('.')]
+            bot.send_message(id,'Доброе утро)')
+            bot.send_message(id,getWeatherForecastToday('Almaty'))
+    
 
 
 @bot.message_handler(commands=['buttons','control'])
@@ -103,11 +135,16 @@ def notification_scedules():
 
                     notifs=pydantic.parse_obj_as(List[remainder_date],json.loads(strjson))
                     tmp=len(notifs)
+                    indexes_toDel=[]
                     for notif in notifs:
                         if(notif.activation_date.date() <= datetime.today().date()):
                             id=fname[fname.find('_')+1:fname.find('.')]
                             bot.send_message(id,'Не забудь: '+notif.remind_text)
-                            notifs.remove(notif)
+                            indexes_toDel.append(notifs.index(notif))
+
+                    indexes_toDel.sort(reverse=True) #this way i pop without ruining next index pop
+                    for index in indexes_toDel:                            
+                        notifs.pop(index)                            
                     if len(notifs)!=tmp:
                         file=open(fname,'w+')#not optimized
             
@@ -136,11 +173,25 @@ def schedules():
         
                     for rem in reminds:
             
-                        schedule.every().day.at(rem.activation_time).do(bot.send_message,rem.id_chat,rem.remiand_text).tag('daily-tasks')
+                        schedule.every().day.at(rem.activation_time).do(bot.send_message,rem.id_chat,rem.remiand_text).tag('daily-tasks').tag(fname[len('remainds_'):fname.find('.')])
+                            
     schedule.every().day.at('07:00').do(morning_mess).tag('daily-tasks')
-    schedule.every().day.at('15:58').do(notification_scedules).tag('daily-tasks')
+    schedule.every().day.at('07:00').do(notification_scedules).tag('daily-tasks')
                
-
+@bot.message_handler(commands=['allinst'])
+def send_all_inst(message: types.Message):
+    try:
+        list=getInstructionList(message.chat.id)
+        all_inst='-----All Instructions-----\n'
+        i=1
+        for obj in list:
+            all_inst+=str(i)+') '+obj.key+'\n'
+            i+=1
+        all_inst+='\nIf you wish to delete some, write in a format >delete inst 1<'
+        bot.send_message(message.chat.id,all_inst)
+    except:
+        bot.send_message(message.chat.id,'no instructions seems to be')
+     
 @bot.message_handler(commands=['all_reminds','вся_рутина','allrem'])
 def get_all_reminds(message:types.Message):
     try:
@@ -160,11 +211,11 @@ def starter(message:types.Message):
     text='Привет, '+message.chat.first_name+'.\n'\
         +'Я телеграмм бот by AA. \nВот что я могу:\n'\
         +'1)Чтобы добавить ежедневное напоминание напишите в формате >23:00 text_to_do<\n'\
-        +'2)Чтобы получить весь список напоминаний или удалить используйте команду - allrem\n'\
+        +'2)Чтобы получить весь список напоминаний или удалить используйте команду - /allrem\n'\
         +'3)Чтобы добавить разовое напоминание через какое-то время можно использовать >in n days text_to_do< или назначить дату>05.07.2022 text_to_do<\n'\
-        +'4)Чтобы получить весь список разовых напоминаний или удалить используйте команду - allnotif\n'\
-        +'5)Могу хранить фотографию вашего расписания и отправлять погоду команда - control\n'
-
+        +'4)Чтобы получить весь список разовых напоминаний или удалить используйте команду - /allnotif\n'\
+        +'5)Могу хранить фотографию вашего расписания и отправлять погоду команда - /control\n'\
+        +'6)Храню инструкции сообщений/видео/голоса под тэгом задаваемый как >"tag name"<, для просмотра всех команда /allinst\n'
         
     bot.send_message(message.chat.id,text)
 
@@ -198,7 +249,11 @@ def getUserText(message: types.Message):
         try:
             schedulePic=open('schedule_'+str(message.chat.id)+'.jpg','rb')
             bot.send_photo(message.chat.id,schedulePic) #obtain schedule from the server
-        except: bot.send_message(message.chat.id,'Before you should set the schedule')
+        except: 
+            bot.send_message(message.chat.id,'Before you should set the schedule-photo')
+            dialogChain=open('dialogChain_'+str(message.chat.id)+'.txt','w+') #yeah костыль # на продакшине понял что все сразу кидают фото вместо команды даже я
+            dialogChain.write('set schedule')
+            dialogChain.close()
     
     elif(isTimeFormat(text_split)): #setter of remainder in format time + text
         remaind_text=message.text.replace(text_split,'',1)
@@ -240,6 +295,7 @@ def getUserText(message: types.Message):
                     file.write(',')
                 else: i+=1
                 file.write  (remainder_everyday(id_chat=remind.id_chat,remiand_text= remind.remiand_text,activation_time= remind.activation_time).json())
+            
             bot.send_message(message.chat.id,'done')
             file.close()
             
@@ -247,16 +303,18 @@ def getUserText(message: types.Message):
         except:
              bot.send_message(message.chat.id,'the remind is not found or error in request')
 
-    elif('play music' in message.text.lower()):#пасхалка?
-        try:
-            search_video=message.text[message.text.lower().find('play music')+len('play music'):]
+    # elif('play music' in message.text.lower()):#пасхалка?
+    #     try:
+    #         import pywhatkit
+    #         search_video=message.text[message.text.lower().find('play music')+len('play music'):]
             
-            pywhatkit.playonyt(search_video)
-        except: bot.send_message(message.chat.id,'nothing to be found')
-    elif('close music' == message.text.lower()):
-        try:
-            keyboard.press_and_release('ctrl+w')
-        except: bot.send_message(message.chat.id,'nothing to be closed')
+    #         pywhatkit.playonyt(search_video)
+    #     except: bot.send_message(message.chat.id,'nothing to be found')
+    # elif('close music' == message.text.lower()):
+    #     try:
+    #         import keyboard
+    #         keyboard.press_and_release('ctrl+w')
+    #     except: bot.send_message(message.chat.id,'nothing to be closed')
     
     #setter of notification
     elif(isDateFormat(text_split) and datetime.strptime(text_split,'%d.%m.%Y').date()>=datetime.today().date()):
@@ -278,7 +336,7 @@ def getUserText(message: types.Message):
             bot.send_message(message.chat.id,'Окей, я напомню')
             schedules()
         except: bot.send_message(message.chat.id,'Notification itself is not defined, Try again')
-    elif(text_split=='in' and (real_split[2].lower()=='days' or real_split[2].lower()=='day') and real_split[1].isdigit()):
+    elif(text_split.lower()=='in' and (real_split[2].lower()=='days' or real_split[2].lower()=='day') and real_split[1].isdigit()):
         diff=int(real_split[1])
         
         date=datetime.today()+timedelta(diff)
@@ -330,9 +388,57 @@ def getUserText(message: types.Message):
         bot.send_message(message.chat.id,'Топ видео, я сохраню))')
     elif(message.text.lower() in forecast_related_words):
         bot.send_message(message.chat.id,getWeatherForecastToday('Almaty'))
+   
+   #setter instruction
+    elif(message.text[0]=='"' and message.text[-1]=='"'):
+        if(not is_in_listInstr(message.chat.id,message.text[1:-1])):
+            bot.send_message(message.chat.id,'Инструкция под тэгом: '+message.text[1:-1])
+            bot.send_message(message.chat.id,"Осталось только ее написать/прислать/сказать")
+            bot.register_next_step_handler(message,set_instruction,message.text[1:-1])
+        else: bot.send_message(message.chat.id,'С данным тэгом уже сущесвтует привязка')
+    #getter instruction
+    elif(is_in_listInstr(message.chat.id, message.text)):
+        bot.send_message(message.chat.id,reply_to_message_id=return_id_from_tag(message.chat.id,message.text),text='Here we go')
+    #delete instruction
+    elif('delete inst' in message.text.lower() and message.text.lower().split().__len__()==3):
+        try:
+            instNum=int(message.text.lower().split()[2])-1
+            insts=getInstructionList(message.chat.id)
+            insts.pop(instNum)
+            file=open('instructions_'+str(message.chat.id)+'.json','w+')#not optimized
+                
+                
+            i=0
+            for inst in insts:# add order by time would be cool
+                if(i>0):
+                    file.write(',')
+                else: i+=1
+                file.write(inst.json())
+                
+            bot.send_message(message.chat.id,'done')
+            file.close()
+        except:
+            bot.send_message(message.chat.id,'the instructions is not found or error in request')
+
         
     
     else: bot.reply_to(message,message.text)
+     
+def set_instruction(message: types.Message,tag):
+    
+    # bot.send_message(message.chat.id,"соси камса",reply_to_message_id=message.message_id-2)
+    # bot.send_message(message.chat.id,tag)
+
+    filename='instructions_'+str(message.chat.id)+'.json'
+    try: file=open(filename,'a+')
+    except: file=open(filename,'w+')
+    if(os.stat(filename).st_size!=0):
+                
+                file.write(',')
+    file.write(Instruction(key=tag,message_id=message.message_id).json())
+    bot.send_message(message.chat.id,'Сохранено')
+
+    file.close()
 
 @bot.message_handler(content_types='photo')   
 def usingPhoto(message:types.Message):
@@ -357,9 +463,18 @@ def schedule_checker():
 if __name__ == "__main__":
     
     
-    schedules()
-    
-    Thread(target=schedule_checker).start() 
+    try:
+        schedules()
+        
+        Thread(target=schedule_checker).start() 
 
-   
-    bot.polling(none_stop=True)
+        
+        bot.polling(none_stop=True,timeout=1)
+    except Exception as e: 
+        bot.send_message(687088043,'PAY FUCKING ATTENTION\n\n'+e)
+        schedules()
+        
+        Thread(target=schedule_checker).start() 
+
+        
+        bot.polling(none_stop=True,timeout=1)
