@@ -24,7 +24,7 @@ class Settings(pydantic.BaseSettings):
     telebot_token: str
     weather_api_key: str
 
-settings= Settings(_env_file='settings.env',_env_file_encoding='utf-8')
+settings= Settings(_env_file='.env',_env_file_encoding='utf-8')
 
 bot=telebot.TeleBot(settings.telebot_token)
 
